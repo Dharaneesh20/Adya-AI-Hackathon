@@ -1,12 +1,17 @@
 import React, { useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import LoginPage from '@/components/auth/LoginPage';
-import Dashboard from '@/pages/Dashboard';
+import StudentDashboard from '@/pages/StudentDashboard';
+import StaffDashboard from '@/pages/StaffDashboard';
+import AdminDashboard from '@/pages/AdminDashboard';
 
-const AppContent: React.FC = () => {
-  const { currentUser, loading } = useAuth();
+interface AppContentProps {}
 
+const AppContent: React.FC<AppContentProps> = () => {
+  const { user, loading, userProfile } = useAuth();
+
+  // Mandatory iframe console logging
   useEffect(() => {
     ["log", "warn", "error"].forEach((level) => {
       const original = console[level as keyof Console] as (...args: any[]) => void;
@@ -82,7 +87,7 @@ const AppContent: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-accent-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
@@ -91,7 +96,22 @@ const AppContent: React.FC = () => {
     );
   }
 
-  return currentUser ? <Dashboard /> : <LoginPage />;
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  // Role-based routing
+  const userRole = userProfile?.role || 'student';
+  
+  switch (userRole) {
+    case 'admin':
+      return <AdminDashboard />;
+    case 'staff':
+      return <StaffDashboard />;
+    case 'student':
+    default:
+      return <StudentDashboard />;
+  }
 };
 
 const App: React.FC = () => {

@@ -3,31 +3,21 @@ import React from 'react';
 interface CardProps {
   children: React.ReactNode;
   className?: string;
-  padding?: 'sm' | 'md' | 'lg';
-  hover?: boolean;
+  onClick?: () => void;
 }
 
-const Card: React.FC<CardProps> = React.memo(({
-  children,
-  className = '',
-  padding = 'md',
-  hover = false
-}) => {
-  const paddingClasses = {
-    sm: 'p-4',
-    md: 'p-6',
-    lg: 'p-8'
-  };
-
-  const hoverClasses = hover ? 'hover:shadow-lg transition-shadow duration-200' : '';
-
+export const Card: React.FC<CardProps> = ({ children, className = '', onClick }) => {
+  const baseClasses = 'bg-white rounded-lg border border-gray-200 shadow-sm transition-shadow duration-200';
+  const hoverClasses = onClick ? 'hover:shadow-md cursor-pointer' : '';
+  
   return (
-    <div className={`bg-white rounded-xl shadow-sm border border-gray-100 ${paddingClasses[padding]} ${hoverClasses} ${className}`}>
+    <div 
+      className={`${baseClasses} ${hoverClasses} ${className}`}
+      onClick={onClick}
+    >
       {children}
     </div>
   );
-});
+};
 
-Card.displayName = 'Card';
-
-export default Card;
+export { Card as default };
