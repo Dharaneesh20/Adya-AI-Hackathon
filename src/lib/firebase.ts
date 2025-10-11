@@ -25,10 +25,35 @@ const requiredEnvVars = [
 const missingVars = requiredEnvVars.filter(varName => !import.meta.env[varName]);
 if (missingVars.length > 0) {
   console.error('Missing Firebase environment variables:', missingVars);
+  console.error('Please configure your Firebase credentials in .env.local file');
+  throw new Error(`Missing required Firebase configuration: ${missingVars.join(', ')}`);
+}
+
+// Validate that we don't have placeholder values
+const hasPlaceholders = Object.entries(firebaseConfig).some(([key, value]) => {
+  return typeof value === 'string' && (
+    value.includes('your-') || 
+    value.includes('demo') ||
+    value === '' ||
+    value === 'undefined'
+  );
+});
+
+if (hasPlaceholders) {
+  console.warn('⚠️ Firebase is configured with demo/placeholder values.');
+  console.warn('Authentication and database features will not work correctly.');
+  console.warn('Please update .env.local with your actual Firebase project credentials.');
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+  console.log('✅ Firebase initialized successfully');
+} catch (error) {
+  console.error('❌ Firebase initialization failed:', error);
+  throw error;
+}
 
 // Initialize Firebase services
 export const auth = getAuth(app);
