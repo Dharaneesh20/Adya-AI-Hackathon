@@ -1,230 +1,232 @@
-import { 
-  collection, 
-  addDoc, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
   onSnapshot,
-  serverTimestamp,
+  getDoc,
   Timestamp
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { 
-  LaundryRequest, 
-  LostItem, 
-  User, 
-  LaundryStatus, 
-  LostItemStatus 
-} from '@/types';
+import type { LaundryRequest, LostItem, UserProfile } from '@/types';
 
-// User Management
-export const createUserProfile = async (userData: Partial<User>) => {
+// User Profile Services
+export const createUserProfile = async (profile: Omit<UserProfile, 'createdAt'>) => {
   try {
-    const userRef = doc(db, 'users', userData.uid!);
-    await updateDoc(userRef, {
-      ...userData,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+    const userRef = doc(db, 'users', profile.uid);
+    await setDoc(userRef, {
+      ...profile,
+      createdAt: new Date(),
     });
-    return { success: true };
   } catch (error) {
     console.error('Error creating user profile:', error);
-    return { success: false, error };
+    throw error;
   }
 };
 
-export const getUserProfile = async (uid: string): Promise<User | null> => {
+export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   try {
-    const userRef = doc(db, 'users', uid);
-    const userSnap = await getDoc(userRef);
-    
-    if (userSnap.exists()) {
-      return { id: userSnap.id, ...userSnap.data() } as User;
+    const userDoc = await getDoc(doc(db, 'users', uid));
+    if (userDoc.exists()) {
+      const data = userDoc.data();
+      return {
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+      } as UserProfile;
     }
     return null;
   } catch (error) {
     console.error('Error getting user profile:', error);
-    return null;
+    throw error;
   }
 };
 
-// Laundry Requests
-export const createLaundryRequest = async (requestData: Partial<LaundryRequest>) => {
+// Laundry Request Services
+export const createLaundryRequest = async (request: Omit<LaundryRequest, 'id' | 'createdAt' | 'updatedAt'>) => {
   try {
     const docRef = await addDoc(collection(db, 'laundryRequests'), {
-      ...requestData,
-      status: 'pending' as LaundryStatus,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      ...request,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
-    return { success: true, id: docRef.id };
+    return docRef.id;
   } catch (error) {
     console.error('Error creating laundry request:', error);
-    return { success: false, error };
+    throw error;
   }
 };
 
-export const updateLaundryRequestStatus = async (
-  requestId: string, 
-  status: LaundryStatus, 
-  notes?: string
-) => {
+export const updateLaundryRequestStatus = async (requestId: string, status: string, notes?: string) => {
   try {
-    const requestRef = doc(db, 'laundryRequests', requestId);
-    await updateDoc(requestRef, {
+    await updateDoc(doc(db, 'laundryRequests', requestId), {
       status,
       notes: notes || '',
-      updatedAt: serverTimestamp()
+      updatedAt: new Date(),
     });
-    return { success: true };
   } catch (error) {
-    console.error('Error updating laundry request:', error);
-    return { success: false, error };
+    console.error('Error updating laundry request status:', error);
+    throw error;
   }
 };
 
-export const getLaundryRequests = (
-  userId?: string,
-  userRole?: string,
-  callback?: (requests: LaundryRequest[]) => void
-) => {
-  let q = query(collection(db, 'laundryRequests'));
-
-  if (userId && userRole === 'student') {
-    q = query(
-      collection(db, 'laundryRequests'),
-      where('studentId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-  } else if (userRole === 'staff') {
-    q = query(
-      collection(db, 'laundryRequests'),
-      orderBy('createdAt', 'desc')
-    );
-  } else {
-    q = query(
-      collection(db, 'laundryRequests'),
-      orderBy('createdAt', 'desc')
-    );
-  }
-
-  return onSnapshot(q, (snapshot) => {
-    const requests = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as LaundryRequest[];
+export const getLaundryRequests = (userId?: string, onUpdate?: (requests: LaundryRequest[]) => void) => {
+  try {
+    let q = collection(db, 'laundryRequests');
     
-    if (callback) callback(requests);
-  });
+    if (userId) {
+      q = query(
+        collection(db, 'laundryRequests'),
+        where('studentId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      q = query(collection(db, 'laundryRequests'), orderBy('createdAt', 'desc'));
+    }
+
+    if (onUpdate) {
+      return onSnapshot(q, (snapshot) => {
+        const requests: LaundryRequest[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date(),
+          updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+          pickupDate: doc.data().pickupDate?.toDate() || new Date(),
+          deliveryDate: doc.data().deliveryDate?.toDate(),
+        } as LaundryRequest));
+        onUpdate(requests);
+      });
+    } else {
+      return getDocs(q).then(snapshot => {
+        return snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date(),
+          updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+          pickupDate: doc.data().pickupDate?.toDate() || new Date(),
+          deliveryDate: doc.data().deliveryDate?.toDate(),
+        } as LaundryRequest));
+      });
+    }
+  } catch (error) {
+    console.error('Error getting laundry requests:', error);
+    throw error;
+  }
 };
 
-// Lost Items
-export const createLostItem = async (itemData: Partial<LostItem>) => {
+// Lost Item Services
+export const createLostItem = async (item: Omit<LostItem, 'id' | 'createdAt' | 'updatedAt'>) => {
   try {
     const docRef = await addDoc(collection(db, 'lostItems'), {
-      ...itemData,
-      status: 'available' as LostItemStatus,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      ...item,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
-    return { success: true, id: docRef.id };
+    return docRef.id;
   } catch (error) {
     console.error('Error creating lost item:', error);
-    return { success: false, error };
+    throw error;
   }
 };
 
-export const claimLostItem = async (
-  itemId: string, 
-  claimData: {
-    claimedBy: string;
-    claimDescription: string;
-    contactInfo: string;
-  }
-) => {
+export const claimLostItem = async (itemId: string, claimantId: string, description: string) => {
   try {
-    const itemRef = doc(db, 'lostItems', itemId);
-    await updateDoc(itemRef, {
-      ...claimData,
-      status: 'claimed' as LostItemStatus,
-      claimedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+    await updateDoc(doc(db, 'lostItems', itemId), {
+      claimedBy: claimantId,
+      claimDescription: description,
+      status: 'claimed',
+      updatedAt: new Date(),
     });
-    return { success: true };
   } catch (error) {
     console.error('Error claiming lost item:', error);
-    return { success: false, error };
+    throw error;
   }
 };
 
-export const verifyItemClaim = async (
-  itemId: string, 
-  approved: boolean,
-  adminNotes?: string
-) => {
+export const verifyItemClaim = async (itemId: string, approved: boolean, adminNotes?: string) => {
   try {
-    const itemRef = doc(db, 'lostItems', itemId);
-    await updateDoc(itemRef, {
-      status: approved ? 'returned' : 'available' as LostItemStatus,
+    const newStatus = approved ? 'returned' : 'found';
+    await updateDoc(doc(db, 'lostItems', itemId), {
+      status: newStatus,
       adminNotes: adminNotes || '',
-      verifiedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      verifiedAt: new Date(),
+      updatedAt: new Date(),
+      ...(approved && { returnedAt: new Date() }),
+      ...(!approved && { claimedBy: null, claimDescription: null }),
     });
-    return { success: true };
   } catch (error) {
     console.error('Error verifying item claim:', error);
-    return { success: false, error };
+    throw error;
   }
 };
 
-export const getLostItems = (callback: (items: LostItem[]) => void) => {
-  const q = query(
-    collection(db, 'lostItems'),
-    orderBy('createdAt', 'desc')
-  );
+export const getLostItems = (onUpdate?: (items: LostItem[]) => void) => {
+  try {
+    const q = query(collection(db, 'lostItems'), orderBy('createdAt', 'desc'));
 
-  return onSnapshot(q, (snapshot) => {
-    const items = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as LostItem[];
-    
-    callback(items);
-  });
+    if (onUpdate) {
+      return onSnapshot(q, (snapshot) => {
+        const items: LostItem[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date(),
+          updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+          foundAt: doc.data().foundAt?.toDate(),
+          returnedAt: doc.data().returnedAt?.toDate(),
+          verifiedAt: doc.data().verifiedAt?.toDate(),
+        } as LostItem));
+        onUpdate(items);
+      });
+    } else {
+      return getDocs(q).then(snapshot => {
+        return snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date(),
+          updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+          foundAt: doc.data().foundAt?.toDate(),
+          returnedAt: doc.data().returnedAt?.toDate(),
+          verifiedAt: doc.data().verifiedAt?.toDate(),
+        } as LostItem));
+      });
+    }
+  } catch (error) {
+    console.error('Error getting lost items:', error);
+    throw error;
+  }
 };
 
-// Analytics
+// Analytics Services
 export const getAnalytics = async () => {
   try {
-    const [laundrySnap, lostItemsSnap, usersSnap] = await Promise.all([
+    const [usersSnapshot, requestsSnapshot, itemsSnapshot] = await Promise.all([
+      getDocs(collection(db, 'users')),
       getDocs(collection(db, 'laundryRequests')),
       getDocs(collection(db, 'lostItems')),
-      getDocs(collection(db, 'users'))
     ]);
 
-    const laundryRequests = laundrySnap.docs.map(doc => doc.data()) as LaundryRequest[];
-    const lostItems = lostItemsSnap.docs.map(doc => doc.data()) as LostItem[];
-    const users = usersSnap.docs.map(doc => doc.data()) as User[];
+    const requests = requestsSnapshot.docs.map(doc => doc.data());
+    const items = itemsSnapshot.docs.map(doc => doc.data());
 
     return {
-      totalLaundryRequests: laundryRequests.length,
-      pendingRequests: laundryRequests.filter(r => r.status === 'pending').length,
-      completedRequests: laundryRequests.filter(r => r.status === 'delivered').length,
-      totalLostItems: lostItems.length,
-      availableLostItems: lostItems.filter(i => i.status === 'available').length,
-      returnedItems: lostItems.filter(i => i.status === 'returned').length,
-      totalUsers: users.length,
-      studentCount: users.filter(u => u.role === 'student').length,
-      staffCount: users.filter(u => u.role === 'staff').length,
-      adminCount: users.filter(u => u.role === 'admin').length
+      totalUsers: usersSnapshot.size,
+      totalLaundryRequests: requestsSnapshot.size,
+      totalLostItems: itemsSnapshot.size,
+      pendingClaims: items.filter(item => item.status === 'claimed').length,
+      completedRequests: requests.filter(req => req.status === 'delivered').length,
+      activeUsers: usersSnapshot.docs.filter(doc => {
+        const data = doc.data();
+        const lastActive = data.lastActive?.toDate();
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        return lastActive && lastActive > thirtyDaysAgo;
+      }).length,
     };
   } catch (error) {
-    console.error('Error fetching analytics:', error);
-    return null;
+    console.error('Error getting analytics:', error);
+    throw error;
   }
 };
